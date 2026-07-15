@@ -407,6 +407,8 @@ resize();
 
 // Game state
 let snake, dir, nextDir, food, score, best = 0, state, loopId, tickMs;
+let particles = [], rings = [], scorePopups = [], flashAlpha = 0;
+let lastFrame = 0, rafId = null;
 
 const DIRS = {
   ArrowUp:    {x:0,y:-1}, w:{x:0,y:-1},
@@ -422,6 +424,7 @@ function initGame() {
   nextDir = {x:1, y:0};
   score = 0;
   tickMs = 150;
+  particles = []; rings = []; scorePopups = []; flashAlpha = 0;
   placeFood();
   updateUI();
 }
@@ -454,13 +457,14 @@ function tick() {
     score += 10;
     if (score > best) best = score;
     tickMs = Math.max(60, 150 - Math.floor(score / 50) * 10);
+    spawnEatEffects(food.x, food.y);
     placeFood();
   } else {
     snake.pop();
   }
 
   updateUI();
-  draw();
+  // draw() is called by rafLoop every frame
 }
 
 function updateUI() {
@@ -468,6 +472,136 @@ function updateUI() {
   document.getElementById('best').textContent = best;
   document.getElementById('level').textContent = Math.floor((150 - tickMs) / 10) + 1;
 }
+
+// ── Particle effects ─────────────────────────────────────
+function spawnEatEffects(cellX, cellY) {
+  const cx = cellX * CELL + CELL / 2;
+  const cy = cellY * CELL + CELL / 2;
+
+  // Expanding ring
+  rings.push({ x: cx, y: cy, r: CELL * 0.2, alpha: 0.9 });
+
+  // Burst particles
+  const count = 20;
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+    const speed = (1.8 + Math.random() * 2.4) * (CELL / 20);
+    const life = 0.38 + Math.random() * 0.38;
+    particles.push({
+      x: cx + (Math.random() - 0.5) * CELL * 0.2,
+      y: cy + (Math.random() - 0.5) * CELL * 0.2,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      size: CELL * (0.07 + Math.random() * 0.1),
+      alpha: 1, life, maxLife: life,
+      color: theme.food,
+    });
+  }
+  // White sparkles
+  for (let i = 0; i < 8; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = (3 + Math.random() * 3) * (CELL / 20);
+    const life = 0.22 + Math.random() * 0.18;
+    particles.push({
+      x: cx, y: cy,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      size: CELL * 0.045,
+      alpha: 1, life, maxLife: life,
+      color: '#ffffff',
+    });
+  }
+
+  // Score popup
+  scorePopups.push({ x: cx, y: cellY * CELL - CELL * 0.1, alpha: 1, life: 0.75, maxLife: 0.75 });
+
+  flashAlpha = 0.07;
+}
+
+function updateEffects(dt) {
+  const s = dt / 1000;
+  flashAlpha = Math.max(0, flashAlpha - s * 3);
+
+  for (let i = rings.length - 1; i >= 0; i--) {
+    const rg = rings[i];
+    rg.r += CELL * 4.5 * s;
+    rg.alpha -= s * 2.8;
+    if (rg.alpha <= 0) rings.splice(i, 1);
+  }
+
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= s;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    p.x += p.vx; p.y += p.vy;
+    p.vy += 0.09 * (CELL / 20); // gentle gravity
+    p.vx *= 0.95; p.vy *= 0.95;
+    p.size *= 0.975;
+    p.alpha = Math.pow(p.life / p.maxLife, 0.6);
+  }
+
+  for (let i = scorePopups.length - 1; i >= 0; i--) {
+    const sp = scorePopups[i];
+    sp.life -= s;
+    if (sp.life <= 0) { scorePopups.splice(i, 1); continue; }
+    sp.y -= 1.1 * (CELL / 20);
+    sp.alpha = Math.pow(sp.life / sp.maxLife, 0.4);
+  }
+}
+
+function drawEffects() {
+  // Screen flash
+  if (flashAlpha > 0) {
+    ctx.save();
+    ctx.globalAlpha = flashAlpha;
+    ctx.fillStyle = theme.food;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+  }
+
+  // Rings
+  rings.forEach(rg => {
+    ctx.save();
+    ctx.globalAlpha = rg.alpha;
+    ctx.strokeStyle = theme.food;
+    ctx.shadowColor = theme.foodGlow;
+    ctx.shadowBlur = 12;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(rg.x, rg.y, rg.r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  });
+
+  // Particles
+  particles.forEach(p => {
+    ctx.save();
+    ctx.globalAlpha = p.alpha;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = p.size * 4;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, Math.max(0.5, p.size), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+
+  // "+10" popups
+  const fontSize = Math.round(CELL * 0.55);
+  ctx.font = `700 ${fontSize}px 'Space Grotesk', sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  scorePopups.forEach(sp => {
+    ctx.save();
+    ctx.globalAlpha = sp.alpha;
+    ctx.shadowColor = theme.food;
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('+10', sp.x, sp.y);
+    ctx.restore();
+  });
+}
+// ─────────────────────────────────────────────────────────
 
 // Drawing
 function draw() {
@@ -539,43 +673,37 @@ function draw() {
     }
     ctx.restore();
   });
+
+  drawEffects();
 }
 
-// Game flow
-function startGame() {
-  initGame();
-  state = 'playing';
-  document.getElementById('startOverlay').classList.add('hidden');
-  document.getElementById('gameoverOverlay').classList.add('hidden');
-  clearInterval(loopId);
-  loopId = setInterval(() => { if (state === 'playing') tick(); }, tickMs);
-  draw();
-}
-
-// Restart with dynamic speed
-function restartLoop() {
-  clearInterval(loopId);
-  loopId = setInterval(() => {
-    if (state !== 'playing') return;
-    const current = loopId;
-    tick();
-    // Reschedule at new speed if changed
-    if (state === 'playing') {
-      clearInterval(current);
-      loopId = setInterval(() => { if (state === 'playing') tick(); }, tickMs);
-    }
-  }, tickMs);
-}
-
-// Use adaptive loop
+// ── Game loop (RAF, always-on) ───────────────────────────
 let lastTick = 0;
-function gameLoop(ts) {
-  if (state !== 'playing') return;
-  if (ts - lastTick >= tickMs) {
+
+function rafLoop(ts) {
+  rafId = null;
+  const dt = Math.min(ts - (lastFrame || ts), 50);
+  lastFrame = ts;
+
+  if (state === 'playing' && ts - lastTick >= tickMs) {
     lastTick = ts;
     tick();
   }
-  if (state === 'playing') requestAnimationFrame(gameLoop);
+
+  updateEffects(dt);
+  draw();
+
+  // Keep looping while playing or effects are still alive
+  if (state === 'playing' || particles.length > 0 || rings.length > 0 || scorePopups.length > 0 || flashAlpha > 0) {
+    rafId = requestAnimationFrame(rafLoop);
+  }
+}
+
+function startRaf() {
+  if (rafId) cancelAnimationFrame(rafId);
+  lastFrame = performance.now();
+  lastTick = lastFrame;
+  rafId = requestAnimationFrame(rafLoop);
 }
 
 function startGameRAF() {
@@ -583,9 +711,7 @@ function startGameRAF() {
   state = 'playing';
   document.getElementById('startOverlay').classList.add('hidden');
   document.getElementById('gameoverOverlay').classList.add('hidden');
-  lastTick = 0;
-  requestAnimationFrame(gameLoop);
-  draw();
+  startRaf();
 }
 
 function endGame() {
@@ -593,19 +719,21 @@ function endGame() {
   document.getElementById('finalScore').textContent = score;
   document.getElementById('finalBest').textContent = best;
   document.getElementById('gameoverOverlay').classList.remove('hidden');
+  // rafLoop continues until particles settle
 }
 
 function togglePause() {
   if (state === 'playing') {
     state = 'paused';
     document.getElementById('pauseOverlay').classList.remove('hidden');
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
   } else if (state === 'paused') {
     state = 'playing';
     document.getElementById('pauseOverlay').classList.add('hidden');
-    lastTick = performance.now();
-    requestAnimationFrame(gameLoop);
+    startRaf();
   }
 }
+// ─────────────────────────────────────────────────────────
 
 // Keyboard
 document.addEventListener('keydown', e => {
