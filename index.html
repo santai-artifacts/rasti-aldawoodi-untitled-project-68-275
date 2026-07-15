@@ -119,7 +119,7 @@
       margin-top: 8px;
       padding: 12px 32px;
       background: var(--accent);
-      color: #0d0d14;
+      color: #060608;
       font-family: inherit;
       font-size: 0.9rem;
       font-weight: 700;
@@ -128,11 +128,11 @@
       border: none;
       border-radius: 8px;
       cursor: pointer;
-      transition: transform 0.12s, box-shadow 0.12s;
-      box-shadow: 0 0 20px rgba(74,222,128,0.3);
+      transition: transform 0.12s, box-shadow 0.12s, background 0.2s;
+      box-shadow: 0 0 20px var(--accent-glow, rgba(74,222,128,0.3));
     }
 
-    .btn:hover { transform: scale(1.05); box-shadow: 0 0 30px rgba(74,222,128,0.5); }
+    .btn:hover { transform: scale(1.05); box-shadow: 0 0 30px var(--accent-glow, rgba(74,222,128,0.5)); }
     .btn:active { transform: scale(0.97); }
 
     .hint {
@@ -183,6 +183,51 @@
       letter-spacing: 0.05em;
     }
 
+    /* Theme picker */
+    .theme-picker {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .theme-label {
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .theme-swatches {
+      display: flex;
+      gap: 8px;
+    }
+
+    .swatch {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+      position: relative;
+    }
+
+    .swatch::after {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      transition: border-color 0.15s;
+    }
+
+    .swatch:hover { transform: scale(1.15); }
+
+    .swatch.active::after {
+      border-color: rgba(255,255,255,0.6);
+    }
+
     @media (min-width: 600px) {
       .controls { display: none; }
     }
@@ -229,6 +274,12 @@
   </div>
 </div>
 
+<!-- Theme picker -->
+<div class="theme-picker">
+  <div class="theme-label">Theme</div>
+  <div class="theme-swatches" id="swatches"></div>
+</div>
+
 <!-- Mobile d-pad -->
 <div class="controls">
   <div class="dpad">
@@ -246,6 +297,98 @@
 </div>
 
 <script>
+// ── Themes ──────────────────────────────────────────────
+const THEMES = [
+  {
+    name: 'Matrix',
+    swatch: '#4ade80',
+    bg: '#0d0d14',
+    grid: 'rgba(255,255,255,0.025)',
+    snakeHead: [74, 222, 128],
+    snakeTail: [22, 163, 74],
+    snakeGlow: 'rgba(74,222,128,0.6)',
+    accent: '#4ade80',
+    food: '#f87171',
+    foodGlow: 'rgba(248,113,113,0.8)',
+  },
+  {
+    name: 'Cyber',
+    swatch: '#22d3ee',
+    bg: '#060d14',
+    grid: 'rgba(34,211,238,0.04)',
+    snakeHead: [34, 211, 238],
+    snakeTail: [8, 145, 178],
+    snakeGlow: 'rgba(34,211,238,0.65)',
+    accent: '#22d3ee',
+    food: '#e879f9',
+    foodGlow: 'rgba(232,121,249,0.8)',
+  },
+  {
+    name: 'Inferno',
+    swatch: '#fb923c',
+    bg: '#110800',
+    grid: 'rgba(251,146,60,0.04)',
+    snakeHead: [251, 146, 60],
+    snakeTail: [194, 65, 12],
+    snakeGlow: 'rgba(251,146,60,0.65)',
+    accent: '#fb923c',
+    food: '#facc15',
+    foodGlow: 'rgba(250,204,21,0.8)',
+  },
+  {
+    name: 'Plasma',
+    swatch: '#a78bfa',
+    bg: '#0b0714',
+    grid: 'rgba(167,139,250,0.04)',
+    snakeHead: [167, 139, 250],
+    snakeTail: [109, 40, 217],
+    snakeGlow: 'rgba(167,139,250,0.65)',
+    accent: '#a78bfa',
+    food: '#34d399',
+    foodGlow: 'rgba(52,211,153,0.8)',
+  },
+  {
+    name: 'Arctic',
+    swatch: '#38bdf8',
+    bg: '#04111a',
+    grid: 'rgba(56,189,248,0.04)',
+    snakeHead: [56, 189, 248],
+    snakeTail: [14, 116, 144],
+    snakeGlow: 'rgba(56,189,248,0.65)',
+    accent: '#38bdf8',
+    food: '#fb7185',
+    foodGlow: 'rgba(251,113,133,0.8)',
+  },
+];
+
+let theme = THEMES[0];
+
+function applyTheme(t) {
+  theme = t;
+  document.body.style.background = t.bg;
+  document.documentElement.style.setProperty('--accent', t.accent);
+  document.documentElement.style.setProperty('--accent-glow', t.snakeGlow);
+  document.querySelector('h1').style.color = t.accent;
+  document.querySelector('h1').style.textShadow = `0 0 20px ${t.snakeGlow}`;
+  document.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+  document.getElementById('swatch-' + t.name).classList.add('active');
+  if (state !== 'idle') draw();
+}
+
+// Build swatch buttons
+const swatchesEl = document.getElementById('swatches');
+THEMES.forEach(t => {
+  const s = document.createElement('button');
+  s.className = 'swatch' + (t === theme ? ' active' : '');
+  s.id = 'swatch-' + t.name;
+  s.title = t.name;
+  s.style.background = t.swatch;
+  s.style.boxShadow = `0 0 10px ${t.swatch}88`;
+  s.addEventListener('click', () => applyTheme(t));
+  swatchesEl.appendChild(s);
+});
+// ────────────────────────────────────────────────────────
+
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
@@ -329,11 +472,11 @@ function updateUI() {
 // Drawing
 function draw() {
   const W = canvas.width, H = canvas.height;
-  ctx.fillStyle = '#0d0d14';
+  ctx.fillStyle = theme.bg;
   ctx.fillRect(0, 0, W, H);
 
   // Grid
-  ctx.strokeStyle = 'rgba(255,255,255,0.025)';
+  ctx.strokeStyle = theme.grid;
   ctx.lineWidth = 0.5;
   for (let x = 0; x <= COLS; x++) {
     ctx.beginPath(); ctx.moveTo(x*CELL, 0); ctx.lineTo(x*CELL, H); ctx.stroke();
@@ -344,9 +487,9 @@ function draw() {
 
   // Food glow
   ctx.save();
-  ctx.shadowColor = 'rgba(248,113,113,0.8)';
+  ctx.shadowColor = theme.foodGlow;
   ctx.shadowBlur = 16;
-  ctx.fillStyle = '#f87171';
+  ctx.fillStyle = theme.food;
   const fp = CELL * 0.22;
   const fr = CELL * 0.5 - fp;
   ctx.beginPath();
@@ -361,13 +504,17 @@ function draw() {
 
   // Snake
   snake.forEach((seg, i) => {
-    const t = i / (snake.length - 1);
-    const r = 46 + (22-46)*t, g = 222 + (197-222)*t, b = 128 + (164-128)*t;
+    const frac = snake.length > 1 ? i / (snake.length - 1) : 0;
+    const [hr, hg, hb] = theme.snakeHead;
+    const [tr, tg, tb] = theme.snakeTail;
+    const r = hr + (tr - hr) * frac;
+    const g = hg + (tg - hg) * frac;
+    const b = hb + (tb - hb) * frac;
     const pad = CELL * 0.1;
 
     ctx.save();
     if (i === 0) {
-      ctx.shadowColor = 'rgba(74,222,128,0.6)';
+      ctx.shadowColor = theme.snakeGlow;
       ctx.shadowBlur = 14;
     }
     ctx.fillStyle = `rgb(${Math.round(r)},${Math.round(g)},${Math.round(b)})`;
@@ -378,7 +525,7 @@ function draw() {
 
     // Eyes on head
     if (i === 0) {
-      ctx.fillStyle = '#0d0d14';
+      ctx.fillStyle = theme.bg;
       const ex = dir.x, ey = dir.y;
       const cx = seg.x*CELL + CELL/2, cy = seg.y*CELL + CELL/2;
       const ew = CELL * 0.09;
